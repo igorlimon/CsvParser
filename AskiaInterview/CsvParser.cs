@@ -10,8 +10,8 @@ namespace AskiaInterview
     {
         private const char ColumnSeparator = '#';
         private bool _includeHeaders;
-        private readonly string _doubleQuotePlaceholder;
-        private readonly string _separatorPlaceholder;
+        private string _doubleQuotePlaceholder;
+        private string _separatorPlaceholder;
 
         public CsvParser()
         {
@@ -64,14 +64,14 @@ namespace AskiaInterview
                 foundEndOfEmbeddedLineBreak = false;
                 currentRow += RemoveLineEnds(rows[i]);
 
-                var dataWithoutSpecialCharacters = ReplaceSpecialCharacters(currentRow);
+                var dataWithoutSpecialCharacters = EscapeSpecialCharacters(currentRow);
                 var columns = dataWithoutSpecialCharacters.Split(ColumnSeparator);
                 string rowAsJson = string.Empty;
                 rowAsJson += GetRowPrefix();
                 rowAsJson += GetData(headers, columns);
                 rowAsJson += GetRowSuffix();
                 result += $"{rowAsJson}";
-                result += GetRowSeparator(i, rows.Length);
+                result += GetItemSeparator(i, rows.Length);
                 currentRow = string.Empty;
             }
 
@@ -83,12 +83,12 @@ namespace AskiaInterview
         private string GetData(List<string> headers, string[] columns)
         {
             string column = string.Empty;
-            var numberOfColumns = GetNumberOfColumns(columns.Length, headers.Count);
-            for (int j = 0; j < numberOfColumns; j++)
+            ValidateNumberOfColumns(columns.Length, headers.Count);
+            for (int j = 0; j < columns.Length; j++)
             {
                 column += GetColumnPrefix(headers, j);
                 column += GetColumnData(columns[j]);
-                column += GetColumnSuffix(j, columns.Length);
+                column += GetItemSeparator(j, columns.Length);
             }
 
             return column;
@@ -114,29 +114,17 @@ namespace AskiaInterview
             return _includeHeaders ? '{' : '[';
         }
 
-        private int GetNumberOfColumns(int numberOfColumns, int numberOfHeaders)
+        private void ValidateNumberOfColumns(int numberOfColumns, int numberOfHeaders)
         {
             if (_includeHeaders && numberOfColumns != numberOfHeaders)
             {
                 throw new InvalidOperationException("Number of column should be same as number of headers otherwise data can be lost!");
             }
-
-            return _includeHeaders ? numberOfHeaders : numberOfColumns;
         }
 
-        private static string GetRowSeparator(int i, int numberOfRows)
+        private static string GetItemSeparator(int index, int numberOfRows)
         {
-            if (i < numberOfRows - 1)
-            {
-                return ",";
-            }
-
-            return string.Empty;
-        }
-
-        private static string GetColumnSuffix(int j, int numberOfColumns)
-        {
-            if (j < numberOfColumns - 1)
+            if (index < numberOfRows - 1)
             {
                 return ",";
             }
@@ -149,14 +137,7 @@ namespace AskiaInterview
             string result;
             if (decimal.TryParse(column, out decimal columnAsDecimal))
             {
-                if (column.Contains("."))
-                {
-                    result = columnAsDecimal.ToString(CultureInfo.InvariantCulture);
-                }
-                else
-                {
-                    result = ((int)columnAsDecimal).ToString();
-                }
+                result = column.Contains(".") ? columnAsDecimal.ToString(CultureInfo.InvariantCulture) : ((int)columnAsDecimal).ToString(CultureInfo.InvariantCulture);
             }
             else
             {
@@ -168,7 +149,7 @@ namespace AskiaInterview
             return result;
         }
 
-        private string ReplaceSpecialCharacters(string row)
+        private string EscapeSpecialCharacters(string row)
         {
             string result = string.Empty;
             var replaceDoubleQuotes = row.Replace("\"\"", _doubleQuotePlaceholder);
@@ -176,22 +157,25 @@ namespace AskiaInterview
             int nextPosition = replaceDoubleQuotes.IndexOf(ColumnSeparator);
             while (nextPosition != -1)
             {
-                var a = replaceDoubleQuotes.Substring(currentPosition, nextPosition - currentPosition);
-                if (a.Count(e => e == '"') % 2 != 0)
+                var column = replaceDoubleQuotes.Substring(currentPosition, nextPosition - currentPosition);
+                var existUnClosedQuote = column.Count(e => e == '"') % 2 != 0;
+                if (existUnClosedQuote)
                 {
-                    var b = result + a;
-                    if (result.Length > 0 && b.Count(e => e == '"') % 2 == 0)
+                    string parsedData = result + column;
+                    bool isFirstLine = result.Length == 0;
+                    bool isQuoteClosed = parsedData.Count(e => e == '"') % 2 == 0;
+                    if (!isFirstLine && isQuoteClosed)
                     {
-                        result += a + ColumnSeparator;
+                        result += column + ColumnSeparator;
                     }
                     else
                     {
-                        result += a + _separatorPlaceholder;
+                        result += column + _separatorPlaceholder;
                     }
                 }
                 else
                 {
-                    result += a + ColumnSeparator;
+                    result += column + ColumnSeparator;
                 }
 
                 currentPosition = nextPosition + 1;
@@ -214,6 +198,8 @@ namespace AskiaInterview
             if (data.Contains(_doubleQuotePlaceholder))
             {
                 // TODO implement more robust algorithm to find unique place holder for current row.
+                _doubleQuotePlaceholder = Guid.NewGuid().ToString().Replace("-", string.Empty);
+                _separatorPlaceholder = Guid.NewGuid().ToString().Replace("-", string.Empty);
             }
         }
 
